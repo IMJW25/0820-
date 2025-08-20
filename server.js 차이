@@ -1,0 +1,43 @@
+////////////////// 확인학기
+io.on('connection', (socket) => {
+  console.log(`클라이언트 연결됨: ${socket.id}`);
+
+  // registerUser: 클라이언트가 접속 시 호출
+  socket.on('registerUser', async ({ walletAddr, nickname }) => {
+    const normalizedWallet = walletAddr.toLowerCase();
+    const isExistingUser = nameDB.has(normalizedWallet);
+
+    userSockets.set(normalizedWallet, { socketId: socket.id, nickname });
+
+   if (isExistingUser) {
+      console.log(`기존 사용자 등록: ${walletAddr} (${nickname})`);
+      // 기존 사용자는 검증자 승인 없이 즉시 입장 완료 이벤트를 보냄
+      socket.emit('verificationCompleted', { approved: true });
+   } else {
+      // 신규 사용자는 검증자 승인 절차 시작 (requestEntry에서 처리)
+      console.log(`신규 사용자 등록 시도: ${walletAddr} (${nickname})`);
+      // 신규 사용자는 페이지 이동 없이 대기상태로 놓고, 이제 requestEntry에서 진행
+    }
+  });
+/////////////////////
+
+  socket.on('registerValidator', ({ walletAddr, nickname }) => {
+    const normalizedWallet = walletAddr.toLowerCase();
+    validatorSockets.set(normalizedWallet, socket.id);
+    console.log(`🔔 검증자 등록됨: ${walletAddr} (${nickname})`);
+  });
+
+  // 기존 채팅 로그 전송
+  const logs = loadChatLogs();
+  socket.emit('chatLogs', logs);
+
+
+
+// sendMessage 이벤트 핸들러
+socket.on('sendMessage', ({ fromUser, message }) => {
+  saveChatLog({ fromUser, message });
+  const toSocketInfo = userSockets.get(fromUser.toLowerCase());
+  if (toSocketInfo) io.to(toSocketInfo.socketId).emit('receiveMessage', { fromUser, message });
+  socket.emit('receiveMessage', { fromUser, message });
+});
+
